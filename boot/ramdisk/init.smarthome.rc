@@ -1,0 +1,7 @@
+on post-fs-data
+
+# Carried over from Headless Echo Devices
+chmod 660 /data/securedStorageLocation/com.amazon.device.smarthome.adapters.wifi/CapabilityInstanceDatabase.db
+chmod 660 /data/securedStorageLocation/com.amazon.device.smarthome.adapters.wifi/CapabilityInstanceDatabase.db-journal
+chmod 660 /data/securedStorageLocation/com.amazon.device.smarthome.adapters.echo/CapabilityInstanceDatabase.db
+chmod 660 /data/securedStorageLocation/com.amazon.device.smarthome.adapters.echo/CapabilityInstanceDatabase.db-journal
