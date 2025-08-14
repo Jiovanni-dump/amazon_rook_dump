@@ -1,0 +1,147 @@
+#svc hub broker
+service halo-hub-broker /vendor/bin/psbroker
+   user system
+   group root system inet net_admin shell log
+   disabled
+
+#svc hub core
+service halo-hub-core /vendor/bin/hub-core
+   user system
+   group root system inet net_admin shell log
+   disabled
+
+service halo-core-swp /vendor/bin/cp_sidewalk
+   user system
+   group root system inet net_admin shell log
+   disabled
+
+service halo-msg-bridge /vendor/bin/core-messaging-bridge
+   user system
+   group root system inet net_admin shell log
+   disabled
+
+service sidewalk-init /vendor/bin/init_legacy_sidewalk_services.sh
+   user system
+   group root system inet net_admin shell
+   oneshot
+   disabled
+
+#Metrics reporter and log rotation service
+service halo-logr /vendor/bin/halo_logr
+   user system
+   group root system inet net_admin shell log
+   disabled
+
+service halo-regiond /vendor/bin/halo_regiond
+   user system
+   group root system inet net_admin shell log
+   oneshot
+   disabled
+
+service halo-bssid-scan /vendor/bin/halo_bssid_scan
+   user system
+   group root system inet net_admin shell log
+   oneshot
+   disabled
+
+#svc to check vendor.halo.protocol.enable
+service check-prop-proto /vendor/bin/halo_check_hubcore_ready_props.sh
+   user system
+   group root system inet net_admin shell log
+   oneshot
+   disabled
+
+#svc to check vendor.halo.hubcore.config, avoid race condition
+service check-prop-cfg /vendor/bin/halo_check_hubcore_ready_props.sh
+   user system
+   group root system inet net_admin shell log
+   oneshot
+   disabled
+
+on init
+   mkdir /mnt/halo 0700 root system
+   mount tmpfs tmpfs /mnt/halo mode=0770,gid=1000
+   restorecon_recursive /mnt/halo
+
+on post-fs-data
+   export SETUP_DOC_PATH /vendor/usr/share/zdk/setup-docs/
+   export CONFUSER_ROOT /mnt/halo/etc
+
+   mkdir /data/vendor 0770 system system
+   mkdir /data/vendor/halo 0770 system system
+   mkdir /data/vendor/halo/var 0770 system system
+   mkdir /data/vendor/halo/var/log 0770 system system
+   mkdir /data/vendor/halo/var/log/core-plugins 0770 system system
+   mkdir /data/vendor/halo/var/log/zservice 0770 system system
+   mkdir /data/vendor/halo/var/sqlite 0770 system system
+   mkdir /data/vendor/halo/var/run 0770 system system
+   mkdir /data/vendor/halo/var/run/hub-core 0770 system system
+   mkdir /data/vendor/halo/var/metrics_reporter 0770 system system
+   mkdir /data/vendor/halo/run 0770 system system
+   mkdir /data/vendor/halo/run/mfg 0770 system system
+   mkdir /data/vendor/halo/run/ras-hosts 0770 system system
+   mkdir /data/vendor/halo/tmp 0770 system system
+   mkdir /data/vendor/halo/tmp/dfu 0770 system system
+
+   mkdir /mnt/halo 0770 system system
+   mkdir /mnt/halo/run 0770 system system
+   mkdir /mnt/halo/run/mfg 0770 system system
+   mkdir /mnt/halo/run/ras-hosts 0770 system system
+   mkdir /mnt/halo/etc 0770 system system
+   mkdir /mnt/halo/etc/core-plugins 0770 system system
+   mkdir /mnt/halo/etc/core-plugins/ringnet.conf.d 0770 system system
+   mkdir /mnt/halo/etc/core-plugins/sidewalk.conf.d 0770 system system
+   mkdir /mnt/halo/etc/hub-core.conf.d 0770 system system
+   mkdir /mnt/halo/etc/core-messaging-bridge.conf.d 0770 system system
+   mkdir /mnt/halo/etc/las-broker 0770 system system
+   mkdir /mnt/halo/etc/maintainer 0770 system system
+   mkdir /mnt/halo/etc/update_lights.conf.d 0770 system system
+   mkdir /mnt/halo/etc/halo_logr.conf.d 0770 system system
+   mkdir /mnt/halo/etc/halo_regiond.conf.d 0770 system system
+
+   start sidewalk-init
+
+on property:init.svc.sidewalk-init=stopped
+   start halo-hub-broker
+
+on property:init.svc.halo-hub-broker=running
+   start halo-bssid-scan
+
+on property:persist.sys.wifi.country_code=*
+   setprop persist.vendor.halo.country ${persist.sys.wifi.country_code}
+
+on property:persist.vendor.halo.country=*
+   start halo-regiond
+
+on property:vendor.halo.hubcore.config=true
+   start check-prop-proto
+
+on property:vendor.halo.protocol.enable=true
+   start check-prop-cfg
+
+on property:vendor.halo.hubcore.ready=true
+   start halo-hub-core
+
+#Start metrics-reporter and logr
+on property:init.svc.halo-hub-core=running
+   start halo-logr
+
+#Start sidewalk plugin
+on property:init.svc.halo-logr=running
+   write /mnt/halo/etc/sw_version ${ro.build.version.number}
+   chown system system /mnt/halo/etc/sw_version
+   chmod 0660 /mnt/halo/etc/sw_version
+   write /mnt/halo/run/mfg/gatewayid ${ro.serialno}
+   chown system system /mnt/halo/run/mfg/gatewayid
+   chmod 0660 /mnt/halo/run/mfg/gatewayid
+   wait /data/vendor/halo/var/run/hub-core/hub-core.pid 1
+   rm /data/vendor/halo/var/run/hub-core/hub-core.pid
+   start halo-core-swp
+#  start halo-msg-bridge
+
+on property:vendor.halo.protocol.enable=false
+   setprop vendor.halo.hubcore.config false
+   stop sidewalk-init
+   stop halo-logr
+   stop halo-hub-core
+   stop halo-core-swp

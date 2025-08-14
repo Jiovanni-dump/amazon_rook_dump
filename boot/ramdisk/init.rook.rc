@@ -1,0 +1,212 @@
+import init.meshmgrservice.rc
+import legacy-sidewalk-services.rc
+import init.trackerd.rc
+import init.touchlogger.rc
+
+on fs
+    write /proc/bootprof "INIT:Mount_START"
+    symlink /dev/block/platform/soc /dev/block/platform/mtk-msdc.0
+    exec /sbin/resize_ext4 /dev/block/platform/mtk-msdc.0/by-name/userdata footer
+
+    mount_all /fstab.mt8163
+
+    mkdir /mnt/sqfs 0771 system system
+    mount squashfs loop@/system/sqfs/container.sqfs /mnt/sqfs wait ro context=u:object_r:squashfs_file:s0
+
+    #change partition permission
+    exec /system/etc/partition_permission.sh
+    write /proc/bootprof "INIT:Mount_END"
+
+on fs
+
+   mount iso9660 loop@/system/etc/iAmCdRom.iso /mnt/cd-rom ro
+
+on post-fs
+   # Allows mediaserver to write to mt_gpio to flip Mic mute GPIO
+   chown root media /sys/devices/soc/1000b000.pinctrl/mt_gpio
+
+   # Allows KnightKeyPolicyManager to trigger privacy mode
+   chown root system /sys/devices/soc/10010000.keypad/privacy_trigger
+   chown root system /sys/devices/soc/10010000.keypad/shutdown_dialog_state
+
+   # Create directory for aipc
+   mkdir /dev/aipc 2770 system aipc
+
+on boot
+    setprop sys.audio_init false
+    start screendimmer
+
+on init
+
+    # Android JobScheduler idle time in minutes. We decide that we're
+    # "idle" if the device has been unused screen off or dreaming
+    # for at least this long
+    setprop persist.sys.jobidletime 20
+
+
+service shipmode /system/bin/start_ship_mode.sh
+	disabled
+	user root
+	group root
+	oneshot
+
+# wifi_log_levels metrics service
+service wifi_log_levels /system/etc/wifi_log_levels.sh
+class late_start
+user root
+group root
+
+service whad_cc /system/bin/whad_cc
+    class main
+    user system
+    group system
+
+on early-boot
+##############################################################
+# This service gets called for playing audio during bootanimation
+# We need to play the audio after the audio stack gets initialized
+##############################################################
+service bootsound /system/bin/bootanim_playback.sh
+    class main
+    user media
+    group audio
+    disabled
+    oneshot
+
+on property:sys.audio_init=true
+    start bootsound
+
+# App based OOBE related changes Begin
+
+on property:lab126.populate.defaultiptables=1
+    start def_firewall
+
+on property:lab126.populate.iptables=1
+     start en_p2p_firewall
+
+on property:lab126.populate.iptables=0
+     start dis_p2p_firewall
+
+on property:lab126.p2p.setup.nat=1
+     start en_p2p_nat
+
+on property:lab126.p2p.setup.nat=0
+     start dis_p2p_nat
+
+on post-fs-data
+    mkdir /data/misc/ama 0770 system system
+    start csm_oobe_setup
+
+
+service def_firewall /system/bin/firewall.sh start default
+     user root
+     group system shell bluetooth
+     disabled
+     oneshot
+
+service en_p2p_firewall /system/bin/firewall.sh start p2p
+     user root
+     group system shell bluetooth
+     disabled
+     oneshot
+
+service dis_p2p_firewall /system/bin/firewall.sh stop p2p
+     user root
+     group system shell bluetooth
+     disabled
+     oneshot
+
+service en_p2p_nat /system/bin/firewall.sh start nat
+     user root
+     group system shell bluetooth
+     disabled
+     oneshot
+
+service dis_p2p_nat /system/bin/firewall.sh stop nat
+     user root
+     group system shell bluetooth
+     disabled
+     oneshot
+
+service csm_oobe_setup /system/bin/csm_oobe_setup.sh
+    user root
+     group system shell bluetooth
+     disabled
+     oneshot
+
+service screendimmer /system/bin/reduce_brightness.sh
+    user root
+    group system shell
+    disabled
+    oneshot
+
+# App based OOBE related changes End
+
+# "ip_local_reserved_ports" is too long too.
+on property:sys.sysctl.ip_loc_res_ports=*
+    write /proc/sys/net/ipv4/ip_local_reserved_ports ${sys.sysctl.ip_loc_res_ports}
+
+# ADD_BOOT_PROF_PRINTS_START
+ # Adding Boot Profiling Prints to BootProf
+ # Device - Rook
+ # Device Specific Info - MTKPROF (and BootProf) is disabled on Rook user builds. To see these prints, MTKPROF needs to be enabled.
+ on early-init
+     write /proc/bootprof "INIT: early-init"
+
+ on init
+     write /proc/bootprof "INIT: on init"
+
+ on boot
+     write /proc/bootprof "INIT: on boot"
+
+ on late-init
+     write /proc/bootprof "INIT: on late-init"
+
+ on post-fs
+     write /proc/bootprof "INIT: on post-fs"
+
+ on post-fs-data
+     write /proc/bootprof "INIT: on post-fs-data"
+
+ on fs
+     write /proc/bootprof "INIT: on fs"
+
+ on property:sys.boot_completed=1
+     write /proc/bootprof "INIT: on property:sys.boot_completed=1"
+
+ on property:sys.audio_init=true
+     write /proc/bootprof "INIT: on property:sys.audio_init=true"
+
+ on property:ro.amazon.fosflags=1
+     write /proc/bootprof "INIT: on property:ro.amazon.fosflags=1"
+
+ on load_all_props_action
+     write /proc/bootprof "INIT: on load_all_props_action"
+
+ on firmware_mounts_complete
+     write /proc/bootprof "INIT: on firmware_mounts_complete"
+
+ on property:sys.boot_from_charger_mode=1
+     write /proc/bootprof "INIT: on property:sys.boot_from_charger_mode=1"
+ # ADD_BOOT_PROF_PRINTS_END
+
+# perfmonitord
+import init.perfmonitord.rc
+
+# perfrecoveryd
+import init.perfrecoveryd.rc
+
+on post-fs
+    # start dbus and avahi
+    start dbus
+    start avahi-daemon
+
+service dbus /system/bin/dbus-daemon --system --nofork
+    class main
+    socket dbus stream 660 dbus dbus
+    user dbus
+    group dbus
+
+service avahi-daemon /system/bin/avahi-daemon --no-drop-root
+    user root
+    group dbus

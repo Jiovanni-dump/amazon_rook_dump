@@ -1,0 +1,76 @@
+# SmartHome init rc configs
+
+on init
+    setprop wifi.launch 1
+
+on post-fs-data
+    # Carried over from Headless Echo Devices
+    chmod 777 /data/securedStorageLocation/com.amazon.device.smarthome.adapters.wifi/CapabilityInstanceDatabase.db
+    chmod 777 /data/securedStorageLocation/com.amazon.device.smarthome.adapters.wifi/CapabilityInstanceDatabase.db-journal
+    chmod 777 /data/securedStorageLocation/com.amazon.device.smarthome.adapters.echo/CapabilityInstanceDatabase.db
+    chmod 777 /data/securedStorageLocation/com.amazon.device.smarthome.adapters.echo/CapabilityInstanceDatabase.db-journal
+    chmod 777 /data/securedStorageLocation/com.amazon.device.smarthome.adapters.ble/CapabilityInstanceDatabase.db
+    chmod 777 /data/securedStorageLocation/com.amazon.device.smarthome.adapters.ble/CapabilityInstanceDatabase.db-journal
+    chmod 777 /data/securedStorageLocation/com.amazon.device.smarthome.adapters.mock/CapabilityInstanceDatabase.db
+    chmod 777 /data/securedStorageLocation/com.amazon.device.smarthome.adapters.mock/CapabilityInstanceDatabase.db-journal
+    chmod 777 /data/securedStorageLocation/SmartHome/PROT_WIFI/CapabilityInstanceDatabase.db
+    chmod 777 /data/securedStorageLocation/SmartHome/PROT_WIFI/CapabilityInstanceDatabase.db-journal
+    mkdir /data/securedStorageLocation/com.amazon.device.smarthome.adapters.wifi 0777 smarthome smarthome
+    mkdir /data/securedStorageLocation/SmartHome 0777 smarthome smarthome
+    mkdir /data/securedStorageLocation/SmartHome
+    chown root system /data/securedStorageLocation/SmartHome
+    chmod 777 /data/securedStorageLocation/SmartHome
+    mkdir /data/securedStorageLocation/SmartHome/PROT_WIFI
+    chown root system /data/securedStorageLocation/SmartHome/PROT_WIFI
+    chmod 777 /data/securedStorageLocation/SmartHome/PROT_WIFI
+    mkdir /data/misc/smarthome_shared 0777 smarthome smarthome
+    chown root system /data/misc/smarthome_shared
+    chmod 777 /data/misc/smarthome_shared
+
+# As FireOS5 Does not support event triggers with combinations of multiple conditions
+# 1. We set 'wifi.launch' to 1 at boot
+# 2. We have two flows to cover :
+#    a. First time migration :
+#       Here 'persist.wifi.migrate.complete' is set to 1 once migration is complete which can happen before/after
+#       boot completed.
+#          i.  If it's before boot completed : This triggers concat action which
+#              - Adds its own value as prefix to 'wifi.launch' as '11',
+#              - Then boot_completed adds its own value as prefix to 'wifi.launch' as '111'.
+#          ii. If it's after boot completed : boot_completed triggers concat action which
+#              - Adds its own value as prefix to 'wifi.launch' as '11',
+#              - Then this trigger adds its own value as prefix to 'wifi.launch' as '111',
+#    b. Subsequent reboots :
+#       Here, 'persist.wifi.migrate.complete' is persisted and triggers concat action at boot which
+#       - Adds its own value as prefix to 'wifi.launch' as '11',
+#       - Then boot_completed adds its own value as prefix to 'wifi.launch' as '111'.
+
+on property:persist.wifi.migrate.complete=1
+    setprop wifi.launch ${persist.wifi.migrate.complete}${wifi.launch}
+
+on property:sys.boot_completed=1
+    setprop wifi.launch ${sys.boot_completed}${wifi.launch}
+    mkdir /data/securedStorageLocation/SmartHome 0777 smarthome smarthome
+    chmod 777 /data/securedStorageLocation/SmartHome/PROT_BLE_MESH/CapabilityInstanceDatabase.db
+    chmod 777 /data/securedStorageLocation/SmartHome/PROT_BLE_MESH/BLEMeshAdapterDatabase.db
+    chmod 777 /data/securedStorageLocation/SmartHome/PROT_BLE_MESH/BLEMeshAdapterDatabase.db-journal
+    chmod 777 /data/misc/smarthome_shared/mesh_cdb.json
+    start shblemeshd
+
+on property:wifi.launch=111
+    chmod 777 /data/securedStorageLocation/SmartHome/PROT_WIFI/CapabilityInstanceDatabase.db
+    chmod 777 /data/securedStorageLocation/SmartHome/PROT_WIFI/WifiAdapterDatabase.db
+    chmod 777 /data/securedStorageLocation/SmartHome/PROT_WIFI/WifiAdapterDatabase.db-journal
+    start smarthomewifid
+
+service smarthomewifid /system/bin/SmartHomeWifid
+    class main
+    user smarthome
+    group dbus inet amz_group wifi net_raw net_admin
+    disabled
+
+service shblemeshd /system/bin/SmartHomeBleMeshd
+    class main
+    user smarthome
+    group dbus amz_group
+    disabled
+
